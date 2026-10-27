@@ -39,6 +39,9 @@ class OpticStudioSession:
     :raises OpticStudioError: OpticStudio cannot be located, or the connection fails.
     """
 
+    #: OpticStudio installation directory this session is connected to.
+    installation_directory: str
+
     def __init__(self, instance: int = 0, directory: str | None = None):
         #: OpticStudio instance number. ``0`` attaches to whichever window is waiting.
         self.instance: int = instance
@@ -96,6 +99,17 @@ class OpticStudioSession:
 
         # SystemFile is the path of the lens open in the OpticStudio window.
         return self._call(lambda: str(self._system.SystemFile))
+
+    def version(self) -> dict[str, str | int]:
+        """
+        Return version details for the connected OpticStudio.
+
+        :returns: Product, file, and ZOS-API version fields, plus the license and connection mode of this window.
+        :rtype: dict[str, str | int]
+        :raises OpticStudioError: The session is already closed, or OpticStudio cannot answer.
+        """
+
+        return self._call(self._read_version)
 
     def _call(self, function):
         # Hand function to the ZOS-API thread and wait for its result.
@@ -155,6 +169,7 @@ class OpticStudioSession:
 
         directory = _locate_opticstudio(self.directory)
         _require_supported_release(directory)
+        self.installation_directory = directory
 
         # These two assemblies are the ZOS-API itself, loaded from that installation.
         clr.AddReference(os.path.join(directory, "ZOSAPI.dll"))
@@ -189,6 +204,29 @@ class OpticStudioSession:
         self._application = application
         self._system = system
 
+    def _read_version(self) -> dict[str, str | int]:
+        # Read on the ZOS-API thread. File versions come from OpticStudio.exe; the rest come from the open application.
+        import System.Diagnostics
+
+        executable = os.path.join(self.installation_directory, "OpticStudio.exe")
+        info = System.Diagnostics.FileVersionInfo.GetVersionInfo(executable)
+        application = self._application
+
+        return {
+            "product_name": _text(info.ProductName),
+            "product_version": _text(info.ProductVersion),
+            "file_version": _text(info.FileVersion),
+            "file_description": _text(info.FileDescription),
+            "opticstudio_version": int(application.OpticStudioVersion),
+            "zos_major_version": int(application.ZOSMajorVersion),
+            "zos_minor_version": int(application.ZOSMinorVersion),
+            "zos_service_pack": int(application.ZOSSPVersion),
+            "license_status": str(application.LicenseStatus),
+            "mode": str(application.Mode),
+            "installation_directory": self.installation_directory,
+            "supported_release": SUPPORTED_RELEASE,
+        }
+
     def _close_application(self):
         application = self._application
         self._application = None
@@ -197,6 +235,13 @@ class OpticStudioSession:
         if application is not None:
             # For an Interactive Extension this ends the external connection.
             application.CloseApplication()
+
+
+def _text(value: object) -> str:
+    if value is None:
+        return ""
+
+    return str(value)
 
 
 def _initialize_sta():
