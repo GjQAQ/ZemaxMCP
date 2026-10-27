@@ -100,6 +100,17 @@ class OpticStudioSession:
         # SystemFile is the path of the lens open in the OpticStudio window.
         return self._call(lambda: str(self._system.SystemFile))
 
+    def lens_file(self) -> dict[str, str | bool]:
+        """
+        Return identity details for the lens open in the OpticStudio window.
+
+        :returns: The file path and name, title, author, and notes, the sequential or non-sequential mode, and whether the file has unsaved changes.
+        :rtype: dict[str, str | bool]
+        :raises OpticStudioError: The session is already closed, or OpticStudio cannot answer.
+        """
+
+        return self._call(self._read_lens_file)
+
     def version(self) -> dict[str, str | int]:
         """
         Return version details for the connected OpticStudio.
@@ -225,6 +236,22 @@ class OpticStudioSession:
             "mode": str(application.Mode),
             "installation_directory": self.installation_directory,
             "supported_release": SUPPORTED_RELEASE,
+        }
+
+    def _read_lens_file(self) -> dict[str, str | bool]:
+        # Read on the ZOS-API thread. Title, author, and notes are the System Explorer Title/Notes fields.
+        system = self._system
+        title_notes = system.SystemData.TitleNotes
+
+        return {
+            "file": _text(system.SystemFile),
+            "name": _text(system.SystemName),
+            "title": _text(title_notes.Title),
+            "author": _text(title_notes.Author),
+            "notes": _text(title_notes.Notes),
+            "mode": str(system.Mode),
+            "needs_save": bool(system.NeedsSave),
+            "is_project_directory": bool(system.IsProjectDirectory),
         }
 
     def _close_application(self):

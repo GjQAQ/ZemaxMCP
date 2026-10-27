@@ -77,22 +77,53 @@ def create_server() -> mcp.server.MCPServer:
 
     server = mcp.server.MCPServer(SERVER_NAME, lifespan=_lifespan)
 
-    @server.tool()
-    def opticstudio_version(ctx: mcp.server.mcpserver.Context) -> dict[str, str | int]:
-        """
-        Return version details for the OpticStudio window waiting on Interactive Extension.
-
-        :returns: Product, file, and ZOS-API versions, the license, and the connection mode.
-        :rtype: dict[str, str | int]
-        """
-
+    def _read(ctx, read):
+        # Drop the shared session when OpticStudio cannot answer, so the next call can reconnect.
         connection = ctx.request_context.lifespan_context
 
         try:
-            return connection.open().version()
+            return read(connection.open())
         except zemaxmcp.opticstudio.OpticStudioError as exc:
             connection.close()
             raise mcp.server.mcpserver.exceptions.ToolError(str(exc)) from exc
+
+    @server.tool()
+    def get_opticstudio_version(ctx: mcp.server.mcpserver.Context) -> dict[str, str | int]:
+        """
+        Return version details for the OpticStudio window waiting on Interactive Extension.
+
+        - product_name: Product name from OpticStudio.exe.
+        - product_version: Product version, such as 24.2.00.0. The first two parts identify the release, so 24.2 is 2024 R2.
+        - file_version: File version of OpticStudio.exe.
+        - file_description: File description of OpticStudio.exe.
+        - opticstudio_version: Integer version reported by ZOS-API.
+        - zos_major_version: ZOS-API major version.
+        - zos_minor_version: ZOS-API minor version.
+        - zos_service_pack: ZOS-API service pack number. 0 means no service pack.
+        - license_status: License type, such as PremiumEdition.
+        - mode: Connection mode. Interactive Extension reports Plugin.
+        - installation_directory: Directory that contains OpticStudio.exe.
+        - supported_release: Release this server supports. This value is fixed by the server.
+        """
+
+        return _read(ctx, lambda session: session.version())
+
+    @server.tool()
+    def get_lens_metadata(ctx: mcp.server.mcpserver.Context) -> dict[str, str | bool]:
+        """
+        Return identity details for the lens open in the OpticStudio window.
+
+        - file: Full path of the lens file. Empty when the lens has not been saved.
+        - name: System name.
+        - title: Lens title from System Explorer Title/Notes.
+        - author: Author from System Explorer Title/Notes.
+        - notes: Notes from System Explorer Title/Notes.
+        - mode: Sequential or NonSequential.
+        - needs_save: True when the window has unsaved changes.
+        - is_project_directory: True when the lens is stored as a project directory rather than a single file.
+        """
+
+        return _read(ctx, lambda session: session.lens_file())
 
     return server
 
