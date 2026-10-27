@@ -10,11 +10,16 @@ __all__ = [
     'main',
 ]
 
-SERVER_NAME = "ZemaxMCP"
+#: Name announced to an MCP host.
+SERVER_NAME: str = "ZemaxMCP"
 
 
 def create_server() -> mcp.server.MCPServer:
-    """Return a server with no tools registered."""
+    """Create an MCP server with no tools registered.
+
+    :returns: The server. It does not connect to OpticStudio.
+    :rtype: mcp.server.MCPServer
+    """
 
     return mcp.server.MCPServer(SERVER_NAME)
 
